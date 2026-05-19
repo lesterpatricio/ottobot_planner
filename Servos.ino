@@ -1,13 +1,6 @@
-// Servos.ino - OttoBot Agenda
-// Movimientos roboticos variados + sonidos sincronizados
 
-// Usa funciones de Buzzer.ino:
-//   buzzerStartTone(freq)
-//   buzzerStopTone()
-
-// Compatible con Reminders.ino:
-//   reminderAgendaMovementStrong()
-//   reminderAgendaMovementMedium()
+// Servos.ino OttoBot Agenda
+// Movimientos roboticos
 
 // Comandos:
 //   SHOW_SCAN
@@ -20,51 +13,58 @@
 //   SHOW_RANDOM
 //   SHOW_FULL
 
+// Funciones usadas por BLEModule.ino:
+//   testWalkServos()
+//   testWalkStronger()
+//   testServos()
+//   handleServoCommand(String type)
+//
+// Funciones usadas por Reminders.ino:
+//   reminderAgendaMovementStrong()
+//   reminderAgendaMovementMedium()
 
-
-// Seguro de movimiento de recordatorio.
-// Reminders.ino lo activa solo cuando hay una alarma real.
+// AUTORIZACION DE MOVIMIENTO PARA RECORDATORIOS
 bool reminderMotionAuthorized = false;
 
-
-// IMPORTANTE:
-// SERVO_1_PIN = pin fisico donde esta conectado el servo 1
-// SERVO_2_PIN = pin fisico donde esta conectado el servo 2
-// SERVO_3_PIN = pin fisico donde esta conectado el servo 3
-// SERVO_4_PIN = pin fisico donde esta conectado el servo 4
-
+// CALIBRACION FINA DE SERVOS
 // Servo fisico 1 = pie derecho
 // Servo fisico 2 = pie izquierdo
 // Servo fisico 3 = pierna/cadera derecha
 // Servo fisico 4 = pierna/cadera izquierda
 
-// Entonces:
+// Mapeo logico usado en este archivo:
+
 // LL = pierna izquierda  -> SERVO_4_PIN -> offset 8
 // RL = pierna derecha    -> SERVO_3_PIN -> offset 0
 // LF = pie izquierdo     -> SERVO_2_PIN -> offset 0
 // RF = pie derecho       -> SERVO_1_PIN -> offset 15
 
-//OFFSET para calibrar algun servo en mala posicion
-const int OFFSET_LL = 8;   // Pierna izquierda real
-const int OFFSET_RL = 0;   // Pierna derecha real
-const int OFFSET_LF = 0;   // Pie izquierdo real
-const int OFFSET_RF = 15;  // Pie derecho real
+const int OFFSET_LL = 8;
+const int OFFSET_RL = 0;
+const int OFFSET_LF = 0;
+const int OFFSET_RF = 15;
 
+// LIMITES SEGUROS
 
-// Limites seguros.
-// Para feria uso 55 a 125 para que se vea mas vistoso.
-// Si el robot fuerza servos o se cae mucho, se usa 60 y 120.
 const int SERVO_MIN_SAFE = 55;
 const int SERVO_MAX_SAFE = 125;
 
+// POSICION ACTUAL INTERNA
 
-// Posicion actual interna.
 int posLL = 90;
 int posRL = 90;
 int posLF = 90;
 int posRF = 90;
 
-// Frecuencias base para efectos
+// FRECUENCIAS PARA EFECTOS
+const int T_C4 = 262;
+const int T_D4 = 294;
+const int T_E4 = 330;
+const int T_F4 = 349;
+const int T_G4 = 392;
+const int T_A4 = 440;
+const int T_B4 = 494;
+
 const int T_C5 = 523;
 const int T_D5 = 587;
 const int T_E5 = 659;
@@ -81,13 +81,14 @@ const int T_G6 = 1568;
 const int T_A6 = 1760;
 const int T_B6 = 1976;
 
+// UTILIDADES INTERNAS
 
-// Utilidades internas
 int safeAngle(int angle) {
   if (angle < SERVO_MIN_SAFE) return SERVO_MIN_SAFE;
   if (angle > SERVO_MAX_SAFE) return SERVO_MAX_SAFE;
   return angle;
 }
+
 
 void servoSmartDelay(unsigned long ms) {
   unsigned long start = millis();
@@ -98,17 +99,20 @@ void servoSmartDelay(unsigned long ms) {
   }
 }
 
+
+void attachServosIfNeeded() {
+  if (!servo1.attached()) servo1.attach(SERVO_4_PIN);
+  if (!servo2.attached()) servo2.attach(SERVO_3_PIN);
+  if (!servo3.attached()) servo3.attach(SERVO_2_PIN);
+  if (!servo4.attached()) servo4.attach(SERVO_1_PIN);
+}
+
+
 void writeServosRaw(int ll, int rl, int lf, int rf) {
   posLL = safeAngle(ll);
   posRL = safeAngle(rl);
   posLF = safeAngle(lf);
   posRF = safeAngle(rf);
-
-
-  // servo1 = pierna izquierda
-  // servo2 = pierna derecha
-  // servo3 = pie izquierdo
-  // servo4 = pie derecho
 
   servo1.write(safeAngle(posLL + OFFSET_LL));
   servo2.write(safeAngle(posRL + OFFSET_RL));
@@ -118,6 +122,8 @@ void writeServosRaw(int ll, int rl, int lf, int rf) {
 
 
 void moveServosSmooth(int targetLL, int targetRL, int targetLF, int targetRF, int durationMs) {
+  attachServosIfNeeded();
+
   targetLL = safeAngle(targetLL);
   targetRL = safeAngle(targetRL);
   targetLF = safeAngle(targetLF);
@@ -132,22 +138,14 @@ void moveServosSmooth(int targetLL, int targetRL, int targetLF, int targetRF, in
   if (steps < 1) steps = 1;
 
   for (int i = 1; i <= steps; i++) {
-    int ll = startLL + ((targetLL - startLL) * i) / steps;
-    int rl = startRL + ((targetRL - startRL) * i) / steps;
-    int lf = startLF + ((targetLF - startLF) * i) / steps;
-    int rf = startRF + ((targetRF - startRF) * i) / steps;
+    int newLL = startLL + ((targetLL - startLL) * i) / steps;
+    int newRL = startRL + ((targetRL - startRL) * i) / steps;
+    int newLF = startLF + ((targetLF - startLF) * i) / steps;
+    int newRF = startRF + ((targetRF - startRF) * i) / steps;
 
-    writeServosRaw(ll, rl, lf, rf);
+    writeServosRaw(newLL, newRL, newLF, newRF);
     servoSmartDelay(20);
   }
-}
-
-// Movimiento + tono simple
-void toneMove(int freq, int durationMs, int ll, int rl, int lf, int rf) {
-  buzzerStartTone(freq);
-  moveServosSmooth(ll, rl, lf, rf, durationMs);
-  buzzerStopTone();
-  servoSmartDelay(20);
 }
 
 
@@ -156,8 +154,18 @@ void silentMove(int durationMs, int ll, int rl, int lf, int rf) {
   servoSmartDelay(20);
 }
 
-// Efectos avanzados de sonido + movimiento
+
+void toneMove(int freq, int durationMs, int ll, int rl, int lf, int rf) {
+  buzzerStartTone(freq);
+  moveServosSmooth(ll, rl, lf, rf, durationMs);
+  buzzerStopTone();
+  servoSmartDelay(20);
+}
+
+
 void toneMoveSweep(int startFreq, int endFreq, int durationMs, int ll, int rl, int lf, int rf) {
+  attachServosIfNeeded();
+
   ll = safeAngle(ll);
   rl = safeAngle(rl);
   lf = safeAngle(lf);
@@ -172,14 +180,51 @@ void toneMoveSweep(int startFreq, int endFreq, int durationMs, int ll, int rl, i
   if (steps < 1) steps = 1;
 
   for (int i = 1; i <= steps; i++) {
-    int currentFreq = startFreq + ((endFreq - startFreq) * i) / steps;
+    int freq = startFreq + ((endFreq - startFreq) * i) / steps;
 
     int newLL = startLL + ((ll - startLL) * i) / steps;
     int newRL = startRL + ((rl - startRL) * i) / steps;
     int newLF = startLF + ((lf - startLF) * i) / steps;
     int newRF = startRF + ((rf - startRF) * i) / steps;
 
-    buzzerStartTone(currentFreq);
+    buzzerStartTone(freq);
+    writeServosRaw(newLL, newRL, newLF, newRF);
+    servoSmartDelay(20);
+  }
+
+  buzzerStopTone();
+  servoSmartDelay(20);
+}
+
+
+void toneMovePulse(int f1, int f2, int durationMs, int ll, int rl, int lf, int rf) {
+  attachServosIfNeeded();
+
+  ll = safeAngle(ll);
+  rl = safeAngle(rl);
+  lf = safeAngle(lf);
+  rf = safeAngle(rf);
+
+  int startLL = posLL;
+  int startRL = posRL;
+  int startLF = posLF;
+  int startRF = posRF;
+
+  int steps = durationMs / 20;
+  if (steps < 1) steps = 1;
+
+  for (int i = 1; i <= steps; i++) {
+    if (i % 2 == 0) {
+      buzzerStartTone(f1);
+    } else {
+      buzzerStartTone(f2);
+    }
+
+    int newLL = startLL + ((ll - startLL) * i) / steps;
+    int newRL = startRL + ((rl - startRL) * i) / steps;
+    int newLF = startLF + ((lf - startLF) * i) / steps;
+    int newRF = startRF + ((rf - startRF) * i) / steps;
+
     writeServosRaw(newLL, newRL, newLF, newRF);
     servoSmartDelay(20);
   }
@@ -190,6 +235,8 @@ void toneMoveSweep(int startFreq, int endFreq, int durationMs, int ll, int rl, i
 
 
 void toneMoveArcade(int f1, int f2, int f3, int durationMs, int ll, int rl, int lf, int rf) {
+  attachServosIfNeeded();
+
   ll = safeAngle(ll);
   rl = safeAngle(rl);
   lf = safeAngle(lf);
@@ -226,537 +273,681 @@ void toneMoveArcade(int f1, int f2, int f3, int durationMs, int ll, int rl, int 
 }
 
 
-void toneMovePulse(int lowFreq, int highFreq, int durationMs, int ll, int rl, int lf, int rf) {
-  ll = safeAngle(ll);
-  rl = safeAngle(rl);
-  lf = safeAngle(lf);
-  rf = safeAngle(rf);
-
-  int startLL = posLL;
-  int startRL = posRL;
-  int startLF = posLF;
-  int startRF = posRF;
-
-  int steps = durationMs / 20;
-  if (steps < 1) steps = 1;
-
-  for (int i = 1; i <= steps; i++) {
-    if ((i / 3) % 2 == 0) {
-      buzzerStartTone(lowFreq);
-    } else {
-      buzzerStartTone(highFreq);
-    }
-
-    int newLL = startLL + ((ll - startLL) * i) / steps;
-    int newRL = startRL + ((rl - startRL) * i) / steps;
-    int newLF = startLF + ((lf - startLF) * i) / steps;
-    int newRF = startRF + ((rf - startRF) * i) / steps;
-
-    writeServosRaw(newLL, newRL, newLF, newRF);
-    servoSmartDelay(20);
-  }
-
-  buzzerStopTone();
-  servoSmartDelay(20);
-}
-
-
 void toneMoveStutter(int freq, int durationMs, int ll, int rl, int lf, int rf) {
-  ll = safeAngle(ll);
-  rl = safeAngle(rl);
-  lf = safeAngle(lf);
-  rf = safeAngle(rf);
+  attachServosIfNeeded();
 
-  int startLL = posLL;
-  int startRL = posRL;
-  int startLF = posLF;
-  int startRF = posRF;
-
-  int steps = durationMs / 20;
+  int steps = durationMs / 40;
   if (steps < 1) steps = 1;
 
-  for (int i = 1; i <= steps; i++) {
-    if ((i / 2) % 2 == 0) {
-      buzzerStartTone(freq);
-    } else {
-      buzzerStopTone();
-    }
-
-    int newLL = startLL + ((ll - startLL) * i) / steps;
-    int newRL = startRL + ((rl - startRL) * i) / steps;
-    int newLF = startLF + ((lf - startLF) * i) / steps;
-    int newRF = startRF + ((rf - startRF) * i) / steps;
-
-    writeServosRaw(newLL, newRL, newLF, newRF);
+  for (int i = 0; i < steps; i++) {
+    buzzerStartTone(freq);
+    moveServosSmooth(ll, rl, lf, rf, 20);
+    buzzerStopTone();
     servoSmartDelay(20);
   }
-
-  buzzerStopTone();
-  servoSmartDelay(20);
 }
 
 
-
-// Alias de efectos sonoros
 void toneMoveDrum(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMovePulse(180, 420, durationMs, ll, rl, lf, rf);
-}
-
-
-void toneMoveLaser(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMoveSweep(600, 2100, durationMs, ll, rl, lf, rf);
-}
-
-
-void toneMoveLaserDown(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMoveSweep(2200, 500, durationMs, ll, rl, lf, rf);
+  buzzerStartTone(260);
+  moveServosSmooth(ll, rl, lf, rf, durationMs);
+  buzzerStopTone();
+  servoSmartDelay(30);
 }
 
 
 void toneMoveCute(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMoveArcade(1200, 1700, 2200, durationMs, ll, rl, lf, rf);
-}
-
-
-void toneMoveSuspense(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMovePulse(650, 760, durationMs, ll, rl, lf, rf);
+  toneMoveArcade(1600, 2200, 2700, durationMs, ll, rl, lf, rf);
 }
 
 
 void toneMoveVictory(int durationMs, int ll, int rl, int lf, int rf) {
-  toneMoveArcade(900, 1400, 1900, durationMs, ll, rl, lf, rf);
-}
-
-// Setup de servos
-void setupServos() {
-  Serial.println("SERVOS: inicializando...");
-
-  // Conexion fisica real:
-  //
-  // SERVO_1_PIN -> pie derecho
-  // SERVO_2_PIN -> pie izquierdo
-  // SERVO_3_PIN -> pierna derecha
-  // SERVO_4_PIN -> pierna izquierda
-  //
-  // Mapeo logico corregido:
-  //
-  // servo1 = pierna izquierda -> SERVO_4_PIN
-  // servo2 = pierna derecha   -> SERVO_3_PIN
-  // servo3 = pie izquierdo    -> SERVO_2_PIN
-  // servo4 = pie derecho      -> SERVO_1_PIN
-
-  servo1.attach(SERVO_4_PIN);
-  servoSmartDelay(150);
-
-  servo2.attach(SERVO_3_PIN);
-  servoSmartDelay(150);
-
-  servo3.attach(SERVO_2_PIN);
-  servoSmartDelay(150);
-
-  servo4.attach(SERVO_1_PIN);
-  servoSmartDelay(150);
-
-  writeServosRaw(90, 90, 90, 90);
-  servoSmartDelay(500);
-
-  randomSeed(analogRead(PIN_LDR) + millis());
-
-  Serial.println("SERVOS: listos en centro con mapeo corregido");
+  toneMoveArcade(900, 1500, 2400, durationMs, ll, rl, lf, rf);
 }
 
 
+void toneMoveSuspense(int durationMs, int ll, int rl, int lf, int rf) {
+  toneMoveSweep(500, 950, durationMs, ll, rl, lf, rf);
+}
+
+
+void toneMoveLaser(int durationMs, int ll, int rl, int lf, int rf) {
+  toneMoveSweep(500, 1800, durationMs, ll, rl, lf, rf);
+}
+
+
+void toneMoveLaserDown(int durationMs, int ll, int rl, int lf, int rf) {
+  toneMoveSweep(1800, 500, durationMs, ll, rl, lf, rf);
+}
+
+// CENTRADO
 void centerServosSoft() {
-  moveServosSmooth(90, 90, 90, 90, 450);
+  silentMove(600, 90, 90, 90, 90);
 }
-
 
 void centerServosFast() {
-  moveServosSmooth(90, 90, 90, 90, 220);
+  silentMove(250, 90, 90, 90, 90);
 }
 
+// CONFIGURACION SERVOS
 
-// SHOWS DE FERIA COMANDOS SERVIDOR
+void setupServos() {
+  if (!ENABLE_SERVOS) {
+    Serial.println("SERVOS: desactivados por configuracion");
+    return;
+  }
 
-// SHOW 1: Escaneo robotico
-// Sonido: laser, scanner, radar
-// Movimiento: giro de caderas y pies tipo escaneo
+  servo1.attach(SERVO_4_PIN);
+  servo2.attach(SERVO_3_PIN);
+  servo3.attach(SERVO_2_PIN);
+  servo4.attach(SERVO_1_PIN);
+
+  centerServosSoft();
+
+  Serial.println("SERVOS: listos");
+}
+
+// DETACH SERVOS
+
+void detachServos() {
+  servo1.detach();
+  servo2.detach();
+  servo3.detach();
+  servo4.detach();
+
+  Serial.println("SERVOS: detach");
+}
+
+// SHOW_SCAN
 void showRobotScanner() {
   Serial.println("SHOW: ROBOT_SCANNER");
 
+  attachServosIfNeeded();
   centerServosSoft();
 
-  toneMoveLaser(280, 72, 108, 90, 90);
-  toneMoveLaserDown(260, 78, 102, 84, 96);
-  toneMovePulse(700, 1300, 260, 90, 90, 78, 102);
-  toneMoveLaser(300, 102, 78, 84, 96);
-  toneMoveLaserDown(320, 108, 72, 90, 90);
+  toneMoveLaser(320, 78, 102, 76, 104);
+  servoSmartDelay(180);
 
-  toneMoveStutter(1450, 260, 102, 78, 96, 84);
-  toneMoveStutter(1150, 260, 90, 90, 102, 78);
-  toneMovePulse(900, 1700, 280, 78, 102, 96, 84);
+  toneMoveSweep(600, 1900, 650, 62, 118, 82, 98);
+  servoSmartDelay(250);
 
-  toneMoveLaser(320, 82, 98, 82, 98);
-  toneMoveLaserDown(340, 98, 82, 98, 82);
+  toneMoveSweep(1900, 600, 650, 118, 62, 98, 82);
+  servoSmartDelay(250);
 
+  toneMovePulse(700, 1500, 280, 82, 98, 72, 108);
+  toneMovePulse(1500, 700, 280, 98, 82, 108, 72);
+
+  for (int i = 0; i < 2; i++) {
+    toneMoveStutter(1500, 180, 76, 104, 86, 94);
+    toneMoveStutter(1000, 180, 104, 76, 94, 86);
+  }
+
+  toneMoveLaserDown(360, 90, 90, 90, 90);
   centerServosSoft();
+
+  Serial.println("SHOW_SCAN terminado");
 }
 
-// SHOW 2: Alarma cute
-// Sonido: campanitas roboticas
-// Movimiento: suave, amigable y llamativo
+// SHOW_CUTE
 void showCuteRobotAlarm() {
   Serial.println("SHOW: CUTE_ROBOT_ALARM");
 
+  attachServosIfNeeded();
   centerServosSoft();
 
-  toneMoveCute(260, 86, 94, 86, 94);
-  toneMoveArcade(1500, 1900, 2300, 260, 94, 86, 94, 86);
-  toneMoveArcade(1800, 2200, 2600, 300, 88, 92, 80, 100);
+  for (int i = 0; i < 3; i++) {
+    toneMoveCute(240, 84, 96, 78, 102);
+    toneMoveCute(240, 96, 84, 102, 78);
+  }
 
-  toneMoveCute(260, 92, 88, 100, 80);
-  toneMoveArcade(1300, 1700, 2100, 300, 90, 90, 86, 94);
+  toneMoveArcade(1600, 2100, 2600, 380, 76, 104, 86, 94);
+  servoSmartDelay(200);
 
-  toneMoveArcade(1600, 2000, 2400, 260, 84, 96, 94, 86);
-  toneMoveArcade(1700, 2100, 2500, 260, 96, 84, 86, 94);
-  toneMoveCute(320, 90, 90, 78, 102);
+  toneMoveArcade(2600, 2100, 1600, 380, 104, 76, 94, 86);
+  servoSmartDelay(200);
 
-  toneMoveArcade(2200, 1800, 1400, 320, 90, 90, 102, 78);
-  toneMoveCute(300, 86, 94, 88, 92);
-  toneMoveArcade(1800, 1400, 1000, 320, 94, 86, 92, 88);
+  for (int i = 0; i < 2; i++) {
+    toneMoveCute(180, 86, 94, 84, 96);
+    toneMoveCute(180, 94, 86, 96, 84);
+  }
+
+  toneMoveArcade(1800, 2300, 2800, 360, 90, 90, 76, 104);
+  toneMoveArcade(2800, 2300, 1800, 360, 90, 90, 104, 76);
 
   centerServosSoft();
+
+  Serial.println("SHOW_CUTE terminado");
 }
 
-// SHOW 3: Baile de victoria
-// Sonido: fanfarria arcade
-// Movimiento: celebracion
+// SHOW_WIN
 void showVictoryRobotDance() {
   Serial.println("SHOW: VICTORY_ROBOT_DANCE");
 
+  attachServosIfNeeded();
   centerServosSoft();
 
-  toneMoveVictory(240, 78, 102, 84, 96);
-  toneMoveArcade(1000, 1500, 2100, 240, 102, 78, 96, 84);
-  toneMoveArcade(1200, 1800, 2400, 260, 78, 102, 96, 84);
-  toneMoveArcade(1600, 2200, 2800, 320, 102, 78, 84, 96);
+  for (int i = 0; i < 3; i++) {
+    toneMoveVictory(240, 78, 102, 80, 100);
+    toneMoveVictory(240, 102, 78, 100, 80);
+  }
 
-  toneMovePulse(900, 1900, 280, 74, 106, 90, 90);
-  toneMovePulse(1100, 2100, 280, 106, 74, 90, 90);
+  toneMoveArcade(900, 1400, 2000, 480, 72, 108, 84, 96);
+  toneMoveArcade(2000, 1400, 900, 480, 108, 72, 96, 84);
 
-  toneMoveVictory(320, 90, 90, 76, 104);
+  toneMovePulse(1000, 1800, 500, 80, 100, 68, 112);
+  servoSmartDelay(350);
 
-  toneMoveArcade(2500, 2000, 1500, 260, 82, 98, 76, 104);
-  toneMoveArcade(2300, 1800, 1300, 260, 98, 82, 104, 76);
+  toneMovePulse(1800, 1000, 500, 100, 80, 112, 68);
+  servoSmartDelay(350);
 
-  toneMovePulse(1300, 2300, 340, 90, 90, 84, 96);
-  toneMoveVictory(360, 90, 90, 104, 76);
+  toneMoveArcade(1200, 1600, 2100, 420, 84, 96, 80, 100);
+  toneMoveArcade(2100, 1600, 1200, 420, 96, 84, 100, 80);
 
   centerServosSoft();
+
+  Serial.println("SHOW_WIN terminado");
 }
 
-// SHOW 4: Pataditas roboticas
-// Sonido: golpes, impactos, stutter
-// Movimiento: patadas pequenas alternadas
+// SHOW_KICK
 void showRobotKicks() {
   Serial.println("SHOW: ROBOT_KICKS");
 
+  attachServosIfNeeded();
   centerServosSoft();
 
-  toneMoveDrum(280, 78, 104, 90, 90);
-  toneMovePulse(220, 900, 320, 76, 106, 70, 100);
-  toneMoveStutter(1500, 240, 82, 100, 82, 96);
-  toneMoveDrum(240, 90, 90, 90, 90);
+  Serial.println("KICK: derecha suave");
 
-  toneMoveDrum(280, 104, 78, 90, 90);
-  toneMovePulse(250, 1000, 320, 106, 76, 100, 70);
-  toneMoveStutter(1700, 240, 100, 82, 96, 82);
-  toneMoveDrum(240, 90, 90, 90, 90);
+  toneMoveArcade(500, 850, 1200, 520, 104, 76, 100, 80);
+  servoSmartDelay(180);
 
-  toneMovePulse(280, 1300, 200, 78, 104, 72, 98);
-  toneMoveStutter(1800, 180, 90, 90, 90, 90);
-  toneMovePulse(300, 1500, 200, 104, 78, 98, 72);
-  toneMoveStutter(1900, 180, 90, 90, 90, 90);
+  toneMoveSweep(700, 1300, 520, 110, 70, 106, 70);
+  servoSmartDelay(180);
 
-  toneMoveDrum(340, 90, 90, 82, 98);
+  toneMovePulse(1100, 1700, 380, 112, 68, 114, 62);
+  servoSmartDelay(250);
+
+  toneMoveSweep(1300, 800, 500, 106, 74, 102, 78);
+  servoSmartDelay(200);
+
+  silentMove(500, 96, 84, 96, 84);
+  servoSmartDelay(250);
+
+  Serial.println("KICK: izquierda suave");
+
+  toneMoveArcade(500, 850, 1200, 520, 76, 104, 80, 100);
+  servoSmartDelay(180);
+
+  toneMoveSweep(700, 1300, 520, 70, 110, 70, 106);
+  servoSmartDelay(180);
+
+  toneMovePulse(1100, 1700, 380, 68, 112, 62, 114);
+  servoSmartDelay(250);
+
+  toneMoveSweep(1300, 800, 500, 74, 106, 78, 102);
+  servoSmartDelay(200);
+
+  silentMove(500, 84, 96, 84, 96);
+  silentMove(500, 90, 90, 90, 90);
 
   centerServosSoft();
+
+  Serial.println("SHOW_KICK terminado");
 }
 
-// SHOW 5: Reverencia / saludo
-// Sonido: elegante, ceremonial
-// Movimiento: inclinacion lenta y regreso
+// SHOW_BOW
 void showRobotBow() {
-  Serial.println("SHOW: ROBOT_BOW");
+  Serial.println("SHOW: ROBOT_BOW_GREETING");
+
+  attachServosIfNeeded();
+  centerServosSoft();
+
+  toneMoveCute(360, 82, 98, 78, 102);
+  servoSmartDelay(200);
+
+  toneMoveCute(360, 98, 82, 102, 78);
+  servoSmartDelay(200);
+
+  toneMoveArcade(700, 1000, 1400, 450, 90, 90, 74, 106);
+  servoSmartDelay(250);
+
+  toneMoveSweep(800, 1350, 650, 74, 106, 80, 100);
+  servoSmartDelay(550);
+
+  toneMoveCute(260, 78, 102, 84, 96);
+  toneMoveCute(260, 74, 106, 80, 100);
+  servoSmartDelay(350);
+
+  toneMoveSweep(1350, 900, 600, 96, 84, 98, 82);
+  servoSmartDelay(250);
+
+  toneMoveCute(250, 84, 96, 78, 102);
+  toneMoveCute(250, 96, 84, 102, 78);
 
   centerServosSoft();
 
-  toneMoveArcade(500, 800, 1100, 340, 90, 90, 104, 76);
-  toneMoveArcade(600, 900, 1300, 380, 88, 92, 108, 72);
-  toneMoveArcade(700, 1000, 1500, 440, 86, 94, 112, 68);
+  Serial.println("SHOW_BOW terminado");
+}
 
-  servoSmartDelay(120);
+// SHOW_STOMP - Pisoton robotico claro
+void showRobotStomp() {
+  Serial.println("SHOW: ROBOT_STOMP_REDESIGN");
 
-  toneMoveSweep(1500, 900, 340, 84, 96, 104, 76);
-  toneMoveSweep(1700, 1000, 340, 96, 84, 104, 76);
+  attachServosIfNeeded();
+  centerServosSoft();
+  servoSmartDelay(500);
 
+  // Pisoton derecho
+  Serial.println("STOMP: derecho");
+
+  // Inclina peso a la izquierda para liberar lado derecho
+  toneMoveDrum(350, 106, 74, 96, 84);
+  servoSmartDelay(180);
+
+  // Levanta/descarga pie derecho
+  toneMovePulse(500, 750, 320, 110, 70, 100, 70);
+  servoSmartDelay(180);
+
+  // Pisoton derecho: regresa al centro con golpe
+  buzzerStartTone(220);
+  silentMove(180, 90, 90, 90, 90);
+  buzzerStopTone();
+  servoSmartDelay(350);
+
+  // Pisoton izquierdo
+  Serial.println("STOMP: izquierdo");
+
+  // Inclina peso a la derecha para liberar lado izquierdo
+  toneMoveDrum(350, 74, 106, 84, 96);
+  servoSmartDelay(180);
+
+  // Levanta/descarga pie izquierdo
+  toneMovePulse(500, 750, 320, 70, 110, 70, 100);
+  servoSmartDelay(180);
+
+  // Pisoton izquierdo: regresa al centro con golpe
+  buzzerStartTone(220);
+  silentMove(180, 90, 90, 90, 90);
+  buzzerStopTone();
+  servoSmartDelay(350);
+
+  // Doble pisoton final, mas vistoso pero controlado
+  Serial.println("STOMP: doble final");
+
+  // Abre postura
+  toneMovePulse(450, 700, 350, 78, 102, 78, 102);
+  servoSmartDelay(200);
+
+  // Golpe al centro
+  buzzerStartTone(180);
+  silentMove(180, 90, 90, 90, 90);
+  buzzerStopTone();
+  servoSmartDelay(250);
+
+  // Abre al otro lado
+  toneMovePulse(500, 750, 350, 102, 78, 102, 78);
+  servoSmartDelay(200);
+
+  // Golpe final al centro
+  buzzerStartTone(180);
+  silentMove(180, 90, 90, 90, 90);
+  buzzerStopTone();
+  servoSmartDelay(250);
+
+  centerServosSoft();
+
+  Serial.println("SHOW_STOMP terminado");
+}
+
+
+// SHOW_ONE_FOOT
+void showOneFootBalance() {
+  Serial.println("SHOW: ONE_FOOT_ELEVATION_DANCE_MORE");
+
+  attachServosIfNeeded();
+  centerServosSoft();
+  servoSmartDelay(250);
+
+  // 1. Junta pies
+  Serial.println("ONE_FOOT: juntar pies");
+  silentMove(300, 90, 90, 110, 70);
   servoSmartDelay(100);
 
-  toneMoveVictory(420, 90, 90, 90, 90);
+  // 2. Precarga corta
+  toneMoveSweep(500, 700, 240, 88, 92, 116, 64);
+  servoSmartDelay(80);
 
-  toneMoveCute(280, 82, 98, 88, 92);
-  toneMoveCute(280, 98, 82, 92, 88);
+  // 3. Subida rapida y visible
+  Serial.println("ONE_FOOT: subir");
+
+  toneMoveSweep(700, 1000, 260, 84, 96, 122, 58);
+  servoSmartDelay(80);
+
+  toneMoveSweep(1000, 1150, 220, 82, 98, 125, 55);
+
+  // 4. Mantener pose alta
+  Serial.println("ONE_FOOT: sostener pose alta");
+
+  buzzerStartTone(380);
+  silentMove(180, 82, 98, 125, 55);
+  buzzerStopTone();
+
+  servoSmartDelay(350);
+
+  // 5. Baile arriba mas vistoso
+  Serial.println("ONE_FOOT: baile arriba vistoso");
+
+  // Balance lateral 1
+  buzzerStartTone(420);
+  silentMove(160, 78, 102, 125, 55);
+  buzzerStopTone();
+  servoSmartDelay(80);
+
+  buzzerStartTone(520);
+  silentMove(160, 86, 94, 122, 58);
+  buzzerStopTone();
+  servoSmartDelay(80);
+
+  // Balance lateral 2
+  buzzerStartTone(460);
+  silentMove(160, 80, 100, 125, 55);
+  buzzerStopTone();
+  servoSmartDelay(80);
+
+  buzzerStartTone(560);
+  silentMove(160, 84, 96, 123, 57);
+  buzzerStopTone();
+  servoSmartDelay(80);
+
+  // Rebote arriba
+  buzzerStartTone(620);
+  silentMove(150, 82, 98, 125, 55);
+  buzzerStopTone();
+  servoSmartDelay(70);
+
+  buzzerStartTone(520);
+  silentMove(150, 86, 94, 121, 59);
+  buzzerStopTone();
+  servoSmartDelay(70);
+
+  buzzerStartTone(680);
+  silentMove(150, 82, 98, 125, 55);
+  buzzerStopTone();
+  servoSmartDelay(120);
+
+  // Mini shake final arriba
+  for (int i = 0; i < 2; i++) {
+    buzzerStartTone(500);
+    silentMove(120, 80, 100, 124, 56);
+    buzzerStopTone();
+    servoSmartDelay(50);
+
+    buzzerStartTone(650);
+    silentMove(120, 84, 96, 125, 55);
+    buzzerStopTone();
+    servoSmartDelay(50);
+  }
+
+  // Pose final antes de bajar
+  buzzerStartTone(720);
+  silentMove(180, 82, 98, 125, 55);
+  buzzerStopTone();
+  servoSmartDelay(250);
+
+  // 6. Bajar ambos pies al mismo tiempo, fluido
+  Serial.println("ONE_FOOT: bajar ambos pies");
+
+  toneMoveSweep(750, 520, 420, 86, 94, 116, 64);
+  servoSmartDelay(60);
+
+  toneMoveSweep(520, 420, 360, 88, 92, 108, 72);
+  servoSmartDelay(60);
+
+  // Recuperacion final suave
+  silentMove(320, 90, 90, 98, 82);
+  silentMove(260, 90, 90, 90, 90);
 
   centerServosSoft();
+
+  Serial.println("SHOW_ONE_FOOT terminado");
 }
 
 
-// SHOW 6: Pasos fuertes tipo robot
-// Sonido: industrial, grave, mecanico
-// Movimiento: stomp / pasos marcados
-void showRobotStomp() {
-  Serial.println("SHOW: ROBOT_STOMP");
-
-  centerServosSoft();
-
-  toneMoveDrum(280, 86, 94, 76, 104);
-  toneMoveStutter(900, 190, 90, 90, 90, 90);
-
-  toneMoveDrum(280, 94, 86, 104, 76);
-  toneMoveStutter(1000, 190, 90, 90, 90, 90);
-
-  toneMovePulse(220, 700, 300, 82, 98, 74, 106);
-  toneMoveStutter(1100, 190, 90, 90, 90, 90);
-
-  toneMovePulse(260, 800, 300, 98, 82, 106, 74);
-  toneMoveStutter(1200, 190, 90, 90, 90, 90);
-
-  toneMovePulse(300, 1500, 260, 80, 100, 80, 100);
-  toneMovePulse(350, 1700, 260, 100, 80, 100, 80);
-  toneMoveArcade(500, 1200, 2200, 360, 90, 90, 90, 90);
-
-  centerServosSoft();
-}
-
-
-// SHOW 7: Pose de un solo pie
-// Sonido: suspenso / equilibrio
-// Movimiento: carga peso y levanta visualmente un pie
-void showOneFootBalance() {
-  Serial.println("SHOW: ONE_FOOT_BALANCE");
-
-  centerServosSoft();
-
-  toneMoveSuspense(280, 90, 90, 90, 90);
-
-  // Carga peso hacia la derecha
-  toneMoveSweep(700, 1100, 400, 74, 106, 88, 92);
-
-  // Levanta visualmente el pie izquierdo
-  toneMoveSweep(1100, 1700, 460, 70, 110, 66, 96);
-
-  // Mantiene pose con pulso de suspenso
-  toneMovePulse(800, 950, 560, 70, 110, 66, 96);
-
-  // Pequeño balance
-  toneMovePulse(850, 1300, 280, 74, 106, 70, 94);
-  toneMovePulse(900, 1500, 280, 70, 110, 66, 96);
-
-  // Baja lentamente
-  toneMoveSweep(1600, 900, 420, 80, 100, 78, 94);
-  toneMoveArcade(900, 1200, 1700, 440, 90, 90, 90, 90);
-
-  // Mini pose contraria
-  toneMoveSweep(700, 1200, 340, 106, 74, 92, 88);
-  toneMoveSweep(1200, 1800, 400, 110, 70, 96, 66);
-
-  toneMovePulse(850, 1050, 420, 110, 70, 96, 66);
-
-  toneMoveArcade(1600, 1200, 800, 460, 90, 90, 90, 90);
-
-  centerServosSoft();
-}
-
-// SHOW 8: Exhibicion completa
-// Combina varios movimientos diferentes.
-// Es largo y vistoso para feria.
+// SHOW_FULL
 void showFullExhibition() {
   Serial.println("SHOW: FULL_EXHIBITION");
 
+  attachServosIfNeeded();
   centerServosSoft();
 
   showRobotScanner();
-  servoSmartDelay(200);
+  servoSmartDelay(250);
+
+  showCuteRobotAlarm();
+  servoSmartDelay(250);
 
   showRobotStomp();
-  servoSmartDelay(200);
+  servoSmartDelay(250);
 
   showRobotKicks();
-  servoSmartDelay(200);
+  servoSmartDelay(250);
 
   showOneFootBalance();
-  servoSmartDelay(200);
+  servoSmartDelay(250);
 
   showRobotBow();
-  servoSmartDelay(200);
+  servoSmartDelay(250);
 
+  showVictoryRobotDance();
+
+  centerServosSoft();
+
+  Serial.println("SHOW_FULL terminado");
+}
+
+
+// SHOW_RANDOM
+void playRandomShowcaseMove() {
+  int option = random(0, 7);
+
+  if (option == 0) {
+    showRobotScanner();
+  }
+
+  else if (option == 1) {
+    showCuteRobotAlarm();
+  }
+
+  else if (option == 2) {
+    showVictoryRobotDance();
+  }
+
+  else if (option == 3) {
+    showRobotKicks();
+  }
+
+  else if (option == 4) {
+    showRobotBow();
+  }
+
+  else if (option == 5) {
+    showRobotStomp();
+  }
+
+  else {
+    showOneFootBalance();
+  }
+}
+
+
+// MOVIMIENTO PARA RECORDATORIO FUERTE
+void reminderAgendaMovementStrong() {
+  if (!reminderMotionAuthorized) {
+    Serial.println("SERVOS: movimiento fuerte bloqueado");
+    return;
+  }
+
+  attachServosIfNeeded();
+
+  Serial.println("REMINDER MOVEMENT STRONG");
+
+  showRobotScanner();
+  servoSmartDelay(300);
   showVictoryRobotDance();
 
   centerServosSoft();
 }
 
 
-// Seleccion random de shows
-void playRandomShowcaseMove() {
-  int option = random(0, 7);
-
-  if (option == 0) {
-    showRobotScanner();
-  } else if (option == 1) {
-    showCuteRobotAlarm();
-  } else if (option == 2) {
-    showVictoryRobotDance();
-  } else if (option == 3) {
-    showRobotKicks();
-  } else if (option == 4) {
-    showRobotBow();
-  } else if (option == 5) {
-    showRobotStomp();
-  } else {
-    showOneFootBalance();
-  }
-}
-
-// Funciones llamadas por Reminders.ino
-void reminderAgendaMovementStrong() {
-  if (!reminderMotionAuthorized) {
-    Serial.println("SERVOS: movimiento fuerte BLOQUEADO");
-    return;
-  }
-
-  Serial.println("SERVOS: alarma fuerte feria variada");
-
-  int option = random(0, 5);
-
-  if (option == 0) {
-    showVictoryRobotDance();
-  } else if (option == 1) {
-    showRobotKicks();
-  } else if (option == 2) {
-    showRobotScanner();
-  } else if (option == 3) {
-    showRobotStomp();
-  } else {
-    showOneFootBalance();
-  }
-}
-
+// MOVIMIENTO PARA RECORDATORIO MEDIO
 
 void reminderAgendaMovementMedium() {
   if (!reminderMotionAuthorized) {
-    Serial.println("SERVOS: movimiento medio BLOQUEADO");
+    Serial.println("SERVOS: movimiento medio bloqueado");
     return;
   }
 
-  Serial.println("SERVOS: alarma media feria variada");
+  attachServosIfNeeded();
 
-  int option = random(0, 4);
+  Serial.println("REMINDER MOVEMENT MEDIUM");
 
-  if (option == 0) {
-    showCuteRobotAlarm();
-  } else if (option == 1) {
-    showRobotBow();
-  } else if (option == 2) {
-    showRobotScanner();
-  } else {
-    showRobotKicks();
-  }
+  showCuteRobotAlarm();
+
+  centerServosSoft();
 }
 
+
+// MOVIMIENTO LEGACY PARA RECORDATORIO
 
 void reminderMovement() {
-  reminderAgendaMovementMedium();
+  reminderMotionAuthorized = true;
+  reminderAgendaMovementStrong();
+  reminderMotionAuthorized = false;
 }
 
-// Pruebas usadas por BLEModule
+
+// PRUEBA GENERAL DE SERVOS
 void testServos() {
-  Serial.println("SERVOS: test individual");
+  attachServosIfNeeded();
+
+  Serial.println("TEST SERVOS");
 
   centerServosSoft();
 
-  toneMove(900, 220, 80, 90, 90, 90);
-  centerServosFast();
+  silentMove(500, 75, 105, 90, 90);
+  silentMove(500, 105, 75, 90, 90);
+  silentMove(500, 90, 90, 75, 105);
+  silentMove(500, 90, 90, 105, 75);
 
-  toneMove(1100, 220, 90, 100, 90, 90);
-  centerServosFast();
-
-  toneMove(1300, 220, 90, 90, 80, 90);
-  centerServosFast();
-
-  toneMove(1500, 220, 90, 90, 90, 100);
   centerServosSoft();
+
+  Serial.println("TEST SERVOS terminado");
 }
 
-
+// TEST WALK SERVOS
 void testWalkServos() {
-  Serial.println("SERVOS: demo caminata/pasos");
-  showRobotStomp();
+  attachServosIfNeeded();
+
+  Serial.println("TEST WALK SERVOS");
+
+  centerServosSoft();
+
+  for (int i = 0; i < 3; i++) {
+    silentMove(380, 78, 102, 78, 102);
+    servoSmartDelay(120);
+
+    silentMove(380, 102, 78, 102, 78);
+    servoSmartDelay(120);
+  }
+
+  centerServosSoft();
+
+  Serial.println("TEST WALK SERVOS terminado");
 }
 
 
+// TEST WALK STRONGER
 void testWalkStronger() {
-  Serial.println("SERVOS: demo fuerte feria");
-  showFullExhibition();
+  attachServosIfNeeded();
+
+  Serial.println("TEST WALK STRONGER");
+
+  centerServosSoft();
+
+  for (int i = 0; i < 3; i++) {
+    silentMove(320, 70, 110, 72, 108);
+    servoSmartDelay(120);
+
+    silentMove(320, 110, 70, 108, 72);
+    servoSmartDelay(120);
+  }
+
+  centerServosSoft();
+
+  Serial.println("TEST WALK STRONGER terminado");
 }
 
-// Comandos para BLE o Serial
-// Devuelve true si el comando fue reconocido.
-
+// MANEJO DE COMANDOS DE SERVOS
 bool handleServoCommand(String type) {
   type.trim();
+  type.toUpperCase();
 
-  if (type == "ALARM_TEST" || type == "SHOW_RANDOM") {
+  if (type == "SHOW_SCAN" || type == "SCAN") {
+    showRobotScanner();
+    return true;
+  }
+
+  if (type == "SHOW_CUTE" || type == "CUTE") {
+    showCuteRobotAlarm();
+    return true;
+  }
+
+  if (type == "SHOW_WIN" || type == "WIN") {
+    showVictoryRobotDance();
+    return true;
+  }
+
+  if (type == "SHOW_KICK" || type == "KICK") {
+    showRobotKicks();
+    return true;
+  }
+
+  if (type == "SHOW_BOW" || type == "BOW") {
+    showRobotBow();
+    return true;
+  }
+
+  if (type == "SHOW_STOMP" || type == "STOMP") {
+    showRobotStomp();
+    return true;
+  }
+
+  if (type == "SHOW_ONE_FOOT" || type == "ONE_FOOT") {
+    showOneFootBalance();
+    return true;
+  }
+
+  if (type == "SHOW_RANDOM" || type == "RANDOM") {
     playRandomShowcaseMove();
     return true;
   }
 
-  if (type == "SHOW_SCAN") {
-    showRobotScanner();
-    return true;
-  }
-
-  if (type == "SHOW_CUTE") {
-    showCuteRobotAlarm();
-    return true;
-  }
-
-  if (type == "SHOW_WIN") {
-    showVictoryRobotDance();
-    return true;
-  }
-
-  if (type == "SHOW_KICK") {
-    showRobotKicks();
-    return true;
-  }
-
-  if (type == "SHOW_BOW") {
-    showRobotBow();
-    return true;
-  }
-
-  if (type == "SHOW_STOMP") {
-    showRobotStomp();
-    return true;
-  }
-
-  if (type == "SHOW_ONE_FOOT") {
-    showOneFootBalance();
-    return true;
-  }
-
-  if (type == "SHOW_FULL") {
+  if (type == "SHOW_FULL" || type == "FULL") {
     showFullExhibition();
+    return true;
+  }
+
+  if (type == "TEST_SERVOS") {
+    testServos();
+    return true;
+  }
+
+  if (type == "TEST_WALK") {
+    testWalkServos();
+    return true;
+  }
+
+  if (type == "TEST_WALK_STRONGER") {
+    testWalkStronger();
     return true;
   }
 
