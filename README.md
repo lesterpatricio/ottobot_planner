@@ -109,9 +109,9 @@ Descripción general:
 - `SHOW_CUTE`: animación tierna o amigable.
 - `SHOW_WIN`: animación de victoria o celebración.
 - `SHOW_KICK`: movimiento tipo patada.
-- `SHOW_BOW`: reverencia o saludo.
-- `SHOW_STOMP`: movimiento tipo pisotón.
-- `SHOW_ONE_FOOT`: animación de equilibrio o movimiento sobre un pie.
+- `SHOW_BOW`: Saludo con movimiento.
+- `SHOW_STOMP`: Movimiento variado .
+- `SHOW_ONE_FOOT`: animación de movimiento sobre los pies.
 
 ---
 
